@@ -5,15 +5,29 @@ Flexibility first, readability second, performance third (but we generally care 
 '''
 
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Optional, ClassVar, Self, Iterator, Any
+from typing import Optional, ClassVar, Self, Iterator, Iterable, Any, Type, TypeVar, cast
 import math
 import bisect
 import collections
 import copy
 
+T = TypeVar('T')
+
+def circular_pairwise(x: Iterable[T]) -> Iterator[tuple[T, T]]:
+	''' like pairwise, but with a trailing (last, first) entry '''
+	x = iter(x)
+	start = next(x)
+	e1 = start
+	for e2 in x:
+		yield (e1, e2)
+		e1 = e2
+	yield (start, e1)
+
 class classproperty(property):
 	def __get__(self, owner_self, owner_cls):
-		return self.fget(owner_cls)
+		return cast(Any, self.fget)(owner_cls)
+
+# FIXME: maybe turn asserts into proper exceptions
 
 class Group(ABC):
 	'''
@@ -74,8 +88,8 @@ class Group(ABC):
 	# it must never change. all of the following functions must expose the
 	# same bijection; they must be consistent with each other:
 
-	@abstractmethod
 	@classmethod
+	@abstractmethod
 	def _order(cls) -> Optional[int]:
 		''' returns the order of the group (amount of elements it has)
 		or None if the group is infinite.
@@ -202,11 +216,9 @@ class Group(ABC):
 
 	# operations provided by the implementation
 
-	ID: ClassVar[Self]
-
 	''' the group's identity element '''
 	@classproperty
-	def ID(cls):
+	def ID(cls) -> Self:
 		return cls._id()  # FIXME: cache
 
 	def __bool__(self):
@@ -307,8 +319,7 @@ class SymmetricGroup(Group):
 		return self.value
 
 	def value_repr(self):
-		desc = ','.join(map(str, self.value))
-		return f'({desc})'
+		return '(' + ','.join(map(str, self.value)) + ')'
 
 	# core group operations
 
@@ -321,7 +332,7 @@ class SymmetricGroup(Group):
 
 	@property
 	def inv(self) -> Self:
-		result = [None] * type(self).SIZE
+		result = [-1] * type(self).SIZE
 		for i, j in enumerate(self.value):
 			result[j] = i
 		return type(self)(tuple(result))
@@ -367,7 +378,7 @@ class SymmetricGroup(Group):
 			options.append(value.pop())
 		return (cls(tuple(x)) for x in generator())
 
-	# cycle composition / decomposition + related ops
+	# cycle decomposition
 
 	def cycles_iter(self) -> Iterator[list[int]]:
 		''' like cycles(sort=False), but yields an iterator over the discovered cycles '''
@@ -407,14 +418,14 @@ class SymmetricGroup(Group):
 			cycles = sorted(cycles, key=len, reverse=True)
 		return tuple(cycles)
 
-	# FIXME: change str repr, add constructor from disjoint cycles, with maybe a strict option?
-
-	def order(self):
-		return math.lcm(*map(len, self.iter_cycles()))
+	# cycle type & derived properties
 
 	def cycle_type(self) -> tuple[int]:
 		''' returns the cycle type (conjugation class) of this permutation (a partition of SIZE) in descending order '''
-		return tuple(sorted(map(len, self.iter_cycles()), reverse=True))
+		return tuple(sorted(map(len, self.cycles_iter()), reverse=True))
+
+	def order(self) -> int:
+		return math.lcm(*map(len, self.cycles_iter()))
 
 	def sign(self) -> int:
 		''' returns the sign (0 → even, 1 → odd) of this permutation '''
@@ -422,7 +433,35 @@ class SymmetricGroup(Group):
 		# FIXME: simpler / more efficient way?
 		return sum(len(c) - 1 for c in self.cycles_iter()) % 2
 
-	# FIXME: is it worth to implement pow?
+	# cycle composition
+
+	@classmethod
+	def from_cycles(cls, *cycles: Iterable[int], strict=False):
+		'''
+		construct a permutation from disjoint cycles.
+
+		if strict=True, fixpoints must be explicitly mentioned.
+		'''
+		result = [-1] * cls.SIZE
+		for cycle in cycles:
+			for i, j in circular_pairwise(cycle):
+				assert isinstance(i, int) and 0 <= i < cls.SIZE and result[i] == -1
+				result[i] = j
+		if not strict:
+			for i, j in enumerate(result):
+				if j == -1:
+					result[i] = i
+		return cls(tuple(result))
+
+	# FIXME: change str repr, maybe move 'from_cycles' to constructor?
+	# also, with the current spead form (*cycles) we can't take advantage of lazyness
+
+	def _pow(self, x: int) -> Self:
+		result = [-1] * type(self).SIZE
+		for cycle in self.cycles_iter():
+			for i in range(len(cycle)):
+				result[cycle[i]] = cycle[(i + x) % len(cycle)]
+		return type(self)(tuple(result))
 
 	# special elements
 
@@ -455,6 +494,8 @@ class SymmetricGroup(Group):
 		'''
 		y = copy.copy(x)
 		for i, j in enumerate(self.value):
+			if i == j:
+				continue # optimization for common case
 			y[j] = x[i]
 		return y
 
@@ -468,7 +509,6 @@ class SymmetricGroup(Group):
 			if len(cycle) == 1:
 				continue # optimization for common case
 			v = x[cycle[0]]
-			for idx in range(1, len(cycle)):
-				i = cycle[idx]
+			for i in cycle[1:]:
 				v, x[i] = x[i], v
 			x[cycle[0]] = v
