@@ -5,7 +5,7 @@ Flexibility first, readability second, performance third (but we generally care 
 '''
 
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Optional, ClassVar, Self, Iterator, Iterable, Any, Type, TypeVar, cast
+from typing import Optional, ClassVar, Self, Iterator, Iterable, Any, Type, TypeVar, Union, cast
 import math
 import bisect
 import collections
@@ -29,7 +29,11 @@ class classproperty(property):
 
 # FIXME: maybe turn asserts into proper exceptions
 
-__all__ = ['GroupMeta', 'Group', 'SymmetricGroup']
+__all__ = [
+	'GroupMeta', 'Group',
+	'SymmetricGroup',
+	'CubeRot',
+]
 
 
 # GROUP
@@ -329,14 +333,14 @@ class SymmetricGroup(Group):
 
 	# class definition
 
-	_value: tuple[int]
+	_value: tuple[int, ...]
 
 	@property
 	def value(self):
 		''' underlying permutation value (tuple of indices) '''
 		return self._value
 
-	def __init__(self, value: tuple[int]):
+	def __init__(self, value: tuple[int, ...]):
 		SIZE = type(self).SIZE
 		assert isinstance(value, tuple) and len(value) == SIZE
 		assert all(0 <= k < SIZE for k in value)
@@ -447,7 +451,7 @@ class SymmetricGroup(Group):
 
 	# cycle type & derived properties
 
-	def cycle_type(self) -> tuple[int]:
+	def cycle_type(self) -> tuple[int, ...]:
 		''' returns the cycle type (conjugation class) of this permutation (a partition of SIZE) in descending order '''
 		return tuple(sorted(map(len, self.cycles_iter()), reverse=True))
 
@@ -457,7 +461,6 @@ class SymmetricGroup(Group):
 	def sign(self) -> int:
 		''' returns the sign (0 → even, 1 → odd) of this permutation '''
 		# equivalent to ( SIZE - len(cycles()) ) % 2
-		# FIXME: simpler / more efficient way?
 		return sum(len(c) - 1 for c in self.cycles_iter()) % 2
 
 	# cycle composition
@@ -544,3 +547,89 @@ class SymmetricGroup(Group):
 			for i in cycle[1:]:
 				v, x[i] = x[i], v
 			x[cycle[0]] = v
+
+
+# APPLICATION-SPECIFIC
+# --------------------
+
+class CubeRot(SymmetricGroup):
+	''' group of rotations of a cube (isomorphic to S_4)
+
+	polarity: this uses `Z = X.cony_by(Y)` convention.
+	Z equals FULL_CYCLE; X2 equals REVERSED. '''
+
+	SIZE = 4
+
+	# base elements
+	X: ClassVar['CubeRot']
+	Y: ClassVar['CubeRot']
+	Z: ClassVar['CubeRot']
+
+	# inverses, squares
+	Xp: ClassVar['CubeRot']
+	Yp: ClassVar['CubeRot']
+	Zp: ClassVar['CubeRot']
+	X2: ClassVar['CubeRot']
+	Y2: ClassVar['CubeRot']
+	Z2: ClassVar['CubeRot']
+
+	# formatting
+	LABELS: ClassVar[dict['CubeRot', str]] = {}
+	LABELS_REV: ClassVar[dict[str, 'CubeRot']]
+
+	def value_repr(self):
+		return repr(type(self).LABELS.get(self)) or super().value_repr()
+
+	def __init__(self, value: Union[str, tuple[int, ...]]):
+		if isinstance(value, str):
+			self._value = self.LABELS_REV[value].value
+		else:
+			super().__init__(value)
+
+	@classmethod
+	def join(cls, orientation: int, face: tuple[int, ...]) -> 'CubeRot':
+		''' opposite of split() '''
+		return cls.Z ** orientation * cls(face + (3,))
+
+	def split(self) -> tuple[int, tuple[int, ...]]:
+		'''
+		split this cube rotation into an (orientation, face) tuple
+
+		it is implementation-dependent which is the identity orientation;
+		but it's guaranteed that `(Z * self).split()[0] == 1 + self.split()[0]`.
+		'''
+		value = self.inv.value
+		orientation = value.index(3)
+		return orientation, value[orientation + 1:] + value[:orientation]
+
+def __init(cls = CubeRot):
+	cls.LABELS[cls.ID] = '1'
+	def set_elem(name: str, label: str, elem: CubeRot):
+		cls.LABELS[elem] = label
+		setattr(cls, name, elem)
+	def set_composition(a: CubeRot, b: CubeRot):
+		cls.LABELS[a * b] = cls.LABELS[a] + ' ' + cls.LABELS[b]
+
+	set_elem('X', 'x', CubeRot.from_cycles([0,1,3,2]))
+	set_elem('Y', 'y', CubeRot.from_cycles([0,3,1,2]))
+	set_elem('Z', 'z', cls.X.conj_by(cls.Y))
+	assert cls.Z == cls.FULL_CYCLE
+
+	for axis in 'XYZ':
+		laxis, AXIS = axis.lower(), getattr(cls, axis)
+		set_elem(axis + '2', laxis + '²', AXIS ** 2)
+		set_elem(axis + 'p', laxis + "'", AXIS ** -1)
+
+	for AXIS in (cls.X, cls.Y):
+		for sense in (+1, -1):
+			for orientation in range(1, 4):
+				set_composition(cls.Z ** orientation, AXIS ** sense)
+
+	for orientation in (1, -1):
+		set_composition(cls.Z ** orientation, cls.X2)
+
+	cls.LABELS_REV = { v: k for k, v in cls.LABELS.items() }
+	assert len(cls.LABELS) == len(cls) and len(cls.LABELS_REV) == len(cls)
+
+__init()
+del __init
