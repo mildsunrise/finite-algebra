@@ -8,7 +8,7 @@ import itertools
 from groups import *
 
 def verify_bijection(G: Type[Group]):
-	for i, (a, b) in enumerate(zip(map(G._fromindex, range(len(G))), G._enumerate(), strict=True)):
+	for i, (a, b) in enumerate(zip(map(G._fromindex, range(len(G))), iter(G), strict=True)):
 		assert a == b
 		assert int(a) == i
 		assert not (a < a or a > a)
@@ -28,3 +28,16 @@ for size in [5]:
 		assert a == Sn.from_cycles(*a.cycles())
 		for k in range(-5, 6):
 			assert Group._pow(a, k) == Sn._pow(a, k)
+
+class S4(SymmetricGroup):
+	SIZE = 4
+
+class Z3(CyclicGroup):
+	SIZE = 3
+
+class Test(DirectProduct):
+	PARTS = (S4, Z3)
+
+verify_bijection(S4)
+verify_bijection(Z3)
+verify_bijection(Test)
