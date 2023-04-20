@@ -21,7 +21,7 @@ def circular_pairwise(x: Iterable[T]) -> Iterator[tuple[T, T]]:
 	for e2 in x:
 		yield (e1, e2)
 		e1 = e2
-	yield (start, e1)
+	yield (e1, start)
 
 class classproperty(property):
 	def __get__(self, owner_self, owner_cls):
@@ -29,7 +29,51 @@ class classproperty(property):
 
 # FIXME: maybe turn asserts into proper exceptions
 
-class Group(ABC):
+__all__ = ['GroupMeta', 'Group', 'SymmetricGroup']
+
+
+# GROUP
+# -----
+
+class GroupMeta(ABCMeta):
+	''' Metaclass for Group.
+
+	This is used for several things:
+	 - to allow identification of Group classes
+	 - to give class-level syntax for the bijection (__len__, __getitem__, __iter__)
+	 - to provide some other behavior (caching, validation at class define time...)
+
+	*Never* use this metaclass without subclassing from Group.
+	'''
+
+	# FIXME: cache ID and __len__
+
+	@property
+	def ID(self: Type[T]) -> T:
+		''' the group's identity element '''
+		cls = cast(Type['Group'], self)
+		return cls._id()
+
+	def __len__(self) -> int:
+		cls = cast(Type['Group'], self)
+		if (order := cls._order()) != None:
+			return order
+		raise ValueError('group is infinite') # FIXME: maybe translate into a nonexistent method?
+
+	def __getitem__(self: Type[T], index: int) -> T:
+		cls = cast(Type['Group'], self)
+		if not isinstance(index, int):
+			raise TypeError(f'element indices must be integers, not {type(index)}')
+		if not (index >= 0 and ((order := cls._order()) == None or index < order)):
+			raise IndexError(f'element index {index} out of range')
+		return cls._fromindex(index)
+
+	def __iter__(self: Type[T]) -> Iterator[T]:
+		cls = cast(Type['Group'], self)
+		# FIXME: omit if _enumerate yields notimplementederror
+		return cls._enumerate()
+
+class Group(metaclass=GroupMeta):
 	'''
 	Base class for finitely generated (finite or infinite) groups.
 
@@ -94,7 +138,8 @@ class Group(ABC):
 		''' returns the order of the group (amount of elements it has)
 		or None if the group is infinite.
 
-		internal method; users should use `len(Class)` instead. '''
+		internal method; users should use `len(Class)` instead, which will
+		raise ValueError instead of returning Noen if the group is infinite '''
 
 	@classmethod
 	@abstractmethod
@@ -216,11 +261,6 @@ class Group(ABC):
 
 	# operations provided by the implementation
 
-	''' the group's identity element '''
-	@classproperty
-	def ID(cls) -> Self:
-		return cls._id()  # FIXME: cache
-
 	def __bool__(self):
 		return self != type(self).ID
 
@@ -260,27 +300,14 @@ class Group(ABC):
 		''' (left) conjugate this element by `other`: equivalent to `other.inv * self * other` '''
 		return type(self).conj(other, self)
 
-	# bijection (FIXME: limit these to class itself)
+	# bijection (class-level syntax is already provided by the metaclass)
 
 	def __int__(self) -> int:
 		return self._index()
 
-	@classmethod
-	def __len__(cls) -> Optional[int]:
-		return cls._order() # FIXME: cache
 
-	@classmethod
-	def __getitem__(cls, index: int) -> Self:
-		if not isinstance(index, int):
-			raise TypeError(f'element indices must be integers, not {type(index)}')
-		if not (index >= 0 and ((order := cls._order()) == None or index < order)):
-			raise IndexError(f'element index {index} out of range')
-		return cls._fromindex(index)
-
-	@classmethod
-	def __iter__(cls) -> Iterator[Self]:
-		# FIXME: omit if _enumerate yields notimplementederror
-		return cls._enumerate()
+# SYMMETRIC GROUP
+# ---------------
 
 class SymmetricGroup(Group):
 	'''
@@ -482,7 +509,12 @@ class SymmetricGroup(Group):
 		assert isinstance(x, int) and 0 <= x < type(self).SIZE
 		return self.value[x]
 
-	# (FIXME: pass __len__, __getitem__, __iter__ when the ones from Group are properly limited to the class)
+	def __len__(self, *a, **k):
+		return type(self.value).__len__(self.value, *a, **k)
+	def __getitem__(self, *a, **k):
+		return type(self.value).__getitem__(self.value, *a, **k)
+	def __iter__(self, *a, **k):
+		return type(self.value).__iter__(self.value, *a, **k)
 
 	def apply(self, x: Any) -> Any:
 		'''
