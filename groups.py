@@ -32,7 +32,7 @@ class classproperty(property):
 # FIXME: maybe turn asserts into proper exceptions
 
 __all__ = [
-	'GroupMeta', 'Group',
+	'GroupMeta', 'Group', 'ID',
 	'CyclicGroup',
 	'SymmetricGroup',
 	'DirectProduct',
@@ -42,6 +42,14 @@ __all__ = [
 
 # GROUP
 # -----
+
+ID = object() # FIXME: use a better thing
+'''
+placeholder object that is expanded to the identity element in contexts that
+accept short syntax, like the arguments of a group product constructor.
+
+see `Group.short_value()`.
+'''
 
 class GroupMeta(ABCMeta):
 	''' Metaclass for Group.
@@ -98,7 +106,36 @@ class Group(metaclass=GroupMeta):
 		if not final:
 			return
 
-	# first, a class should probably define constructors and __repr__ / value_repr (and maybe __str__)
+	# constructing / parsing
+
+	@classmethod
+	def short_value(cls, x: Any) -> Self:
+		'''
+		coerces short value `x` into a group element of type `t`
+
+		this system is used to allow shorter syntax in cases where the
+		expected group type is known by context, such as in group products.
+
+		the default implementation should be fine for most needs:
+		 - if the value is already an instance of the expected group, it's
+		   returned unchanged.
+		 - if the value is the special ID export, then the identity of that
+		   group is returned.
+		 - otherwise, an element is constructed feeding `x` to the constructor.
+		'''
+		if isinstance(x, cls):
+			return x
+		if x is ID:
+			return cls.ID
+		return cls(x)
+
+	# formatting
+
+	def __str__(self):
+		'''
+		the default str() implementation just returns `short_repr()`
+		'''
+		return self.short_repr()
 
 	def __repr__(self):
 		'''
@@ -110,15 +147,34 @@ class Group(metaclass=GroupMeta):
 		try:
 			desc = self.value_repr()
 		except NotImplementedError:
-			return name + f'[{int(self)}]'
-		return name + f'({desc})'
+			pass
+		else:
+			return name + ('.ID' if desc is ID else f'({desc})')
+		return name + f'[{int(self)}]'
+
+	def short_repr(self) -> str:
+		'''
+		expresses group element `x` in short syntax understood by `short_value`, see the description
+		of that method for the motivation behind this. the default implementation uses `value_repr`
+		if implemented, and `__repr__` otherwise.
+		'''
+		try:
+			desc = self.value_repr()
+		except NotImplementedError:
+			pass
+		else:
+			return 'ID' if desc is ID else desc
+		return repr(self)
 
 	def value_repr(self) -> str:
 		'''
 		returns the representation of a single value to be passed to the constructor. this
-		is used by the default __repr__ implementation, but also when formatting values for higher
-		order groups, such as direct products, where the constructor may be omitted as the value
-		may be automatically passed to it.
+		is used by the default `__repr__` and `short_value` implementations, and for most
+		subclasses it should be enough to implement this method. for more advanced cases it
+		may be necessary to override `__repr__` and `short_value` instead.
+
+		as an additional feature, if this method returns the `ID` singleton, `__repr__`
+		formats `Class.ID` and `short_repr` formats `ID`.
 		'''
 		raise NotImplementedError('this group does not support short value representations')
 
@@ -649,18 +705,13 @@ class DirectProduct(Group, final=False):
 
 	def __init__(self, value: tuple):
 		assert isinstance(value, tuple)
-		self._value = tuple( x if isinstance(x, t) else t(x) for t, x in zip(type(self).PARTS, value, strict=True) )
+		self._value = tuple( t.short_value(x) for t, x in zip(type(self).PARTS, value, strict=True) )
 
 	def _cmpkey(self):
 		return self.value
 
 	def value_repr(self):
-		def short_repr(x: Group) -> str:
-			try:
-				return x.value_repr()
-			except NotImplementedError:
-				return repr(x)
-		return '(' + ', '.join(map(short_repr, self.value)) + ')'
+		return '(' + ', '.join(x.short_repr() for x in self.value) + ')'
 
 	# pass sequence protocol to underlying tuple
 
@@ -752,6 +803,8 @@ class CubeRot(SymmetricGroup):
 	LABELS_REV: ClassVar[dict[str, 'CubeRot']]
 
 	def value_repr(self):
+		if not self:
+			return ID
 		return repr(type(self).LABELS.get(self)) or super().value_repr()
 
 	def __init__(self, value: Union[str, tuple[int, ...]]):
