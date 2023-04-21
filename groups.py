@@ -12,6 +12,7 @@ import bisect
 import collections
 import copy
 import itertools
+import re
 
 T = TypeVar('T')
 
@@ -958,6 +959,53 @@ class WreathProduct(SemidirectProduct, final=False):
 	@abstractmethod
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
 		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
+
+
+# AUTOMAGICAL GROUP CREATION
+# --------------------------
+
+'''
+This module defines a `__getattr__` that will recognize accesses to
+certain name patterns and auto-create the group in the module. This
+allows writing:
+
+~~~ python
+from groups import S12
+~~~
+
+instead of:
+
+~~~ python
+from groups import SymmetricGroup
+
+class S12(SymmetricGroup):
+	SIZE = 12
+~~~
+
+With the added benefit that the created S12 lives in this module and
+the same class will be used by everyone.
+
+Right now the only supported pattern is PREFIX + NATURAL, with the
+following prefixes:
+
+ - `S<n>`: SymmetricGroup
+ - `Z<n>`: CyclicGroup
+'''
+
+PREFIXES = {
+	'S': SymmetricGroup,
+	'Z': CyclicGroup,
+}
+
+def __getattr__(name: str):
+	if (m := re.fullmatch(r'(\D+)(\d+)', name)) and (t := PREFIXES.get(m.group(1))) != None:
+		class AutoGroup(t):
+			SIZE = int(m.group(2))
+		AutoGroup.__name__ = AutoGroup.__qualname__ = name
+		globals()[name] = AutoGroup
+		return AutoGroup
+	mod = __import__(__name__)
+	return type(mod).__getattr__(mod, name)
 
 
 # APPLICATION-SPECIFIC
