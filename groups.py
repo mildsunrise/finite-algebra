@@ -36,6 +36,8 @@ __all__ = [
 	'CyclicGroup',
 	'SymmetricGroup',
 	'DirectProduct',
+	'SemidirectProduct',
+	'WreathProduct',
 	'CubeRot',
 ]
 
@@ -299,7 +301,7 @@ class Group(metaclass=GroupMeta):
 		'''
 		raise NotImplementedError('this group has no efficient way to calculate the order of an element')
 
-	def _pow(self, x: int) -> Self:
+	def _pow(self, x: int, order_threshold: Optional[int]=4) -> Self:
 		'''
 		raises an element to an integer power (may be negative). the default
 		implementation uses exponentiation by squaring (together with an optional
@@ -310,7 +312,7 @@ class Group(metaclass=GroupMeta):
 		integers.
 		'''
 		# for non-small exponents, round to modulo order of the element
-		if abs(x) > 4:
+		if order_threshold and abs(x) > order_threshold:
 			try:
 				order = self.order()
 			except NotImplementedError | ValueError:
@@ -689,10 +691,15 @@ class DirectProduct(Group, final=False):
 	direct product of groups, with tuple shape
 
 	implemented bijection matches Python's lexicographical tuple comparison
+
+	(ideally this would be a subclass of SemidirectProduct, but doing it
+	separately allows greater flexibility such as arbitrary number of components)
+
+	note: all groups must be finite except for the first one, which may be infinite
 	'''
 
 	PARTS: ClassVar[tuple[Type[Group], ...]]
-	''' underlying components (must be defined by child) '''
+	''' group for each component of the product (must be defined by child) '''
 
 	# class definition
 
@@ -772,6 +779,185 @@ class DirectProduct(Group, final=False):
 
 	def order(self) -> int:
 		return math.lcm(*( a.order() for a in self ))
+
+
+# SEMIDIRECT PRODUCT
+# ------------------
+
+# Python's type system seems too limited for this, but we can at least use type aliases to make things clearer
+N = H = Group
+
+class SemidirectProduct(Group, final=False):
+	'''
+	(outer) semidirect product of two groups N ⋊ H, as an `(n, h)` tuple
+
+	implemented bijection matches Python's lexicographical tuple comparison
+
+	note: quotient subgroup H must be finite
+	'''
+
+	# FIXME: class properties N and H, maybe
+
+	PARTS: tuple[Type[N], Type[H]]
+	''' the 2 groups for the product: normal subgroup N and quotient group H (must be defined by child) '''
+	# FIXME: this should be ClassVar, but it's forbidden for type variables...?
+
+	@classmethod
+	@abstractmethod
+	def semidirect_homomorphism(cls, h: H, n: N) -> N:
+		'''
+		H → Aut(N) homomorphism that characterises this semidirect product (must be defined by child)
+
+		conceptually this is a mapping from elements of H into functions from N to N,
+		but the curried form (taking both H and N) is defined here for simplicity. '''
+
+	@property
+	def n(self):
+		''' underlying element of the normal subgroup N '''
+		return self._value[0]
+
+	@property
+	def h(self):
+		''' underlying element of the quotient group H '''
+		return self._value[1]
+
+	# class definition (this part is very much copied from DirectProduct)
+
+	_value: tuple[N, H]
+
+	@property
+	def value(self):
+		''' underlying value '''
+		return self._value
+
+	def __init__(self, value: tuple[N, H]):
+		assert isinstance(value, tuple)
+		self._value = tuple( t.short_value(x) for t, x in zip(type(self).PARTS, value, strict=True) )
+
+	def _cmpkey(self):
+		return self.value
+
+	def value_repr(self):
+		return '(' + ', '.join(x.short_repr() for x in self.value) + ')'
+
+	# pass sequence protocol to underlying tuple (this part is very much copied from DirectProduct)
+
+	def __len__(self, *a, **k):
+		return type(self.value).__len__(self.value, *a, **k)
+	def __getitem__(self, *a, **k):
+		return type(self.value).__getitem__(self.value, *a, **k)
+	def __iter__(self, *a, **k):
+		return type(self.value).__iter__(self.value, *a, **k)
+
+	# core group operations
+
+	@classmethod
+	def _id(cls):
+		return cls(tuple( g.ID for g in cls.PARTS ))
+
+	def _mul(self, other: Self) -> Self:
+		phi = type(self).semidirect_homomorphism
+		return type(self)(( self.n * phi(self.h, other.n), self.h * other.h ))
+
+	@property
+	def inv(self) -> Self:
+		phi = type(self).semidirect_homomorphism
+		hinv = self.h.inv
+		return type(self)(( phi(hinv, self.n.inv), hinv ))
+
+	# bijection (this part is very much copied from DirectProduct)
+
+	@classmethod
+	def _order(cls):
+		return math.prod(map(len, cls.PARTS))
+
+	def _index(self) -> int:
+		index = 0
+		for t, x in zip(type(self).PARTS, self.value):
+			index = index * len(t) + int(x)
+		return index
+
+	@classmethod
+	def _fromindex(cls, index: int):
+		result = []
+		for t in reversed(cls.PARTS):
+			index, x = divmod(index, len(t))
+			result.append(t[x])
+		return cls(tuple(reversed(result)))
+
+	@classmethod
+	def _enumerate(cls) -> Iterator[Self]:
+		def generator(parts = cls.PARTS, prefix = ()):
+			if not parts:
+				return (yield cls(prefix))
+			g, *parts = parts
+			for x in g:
+				yield from generator(parts, prefix + (x,))
+		return generator()
+
+	# other operations
+
+	def _pow(self, x: int, order_threshold: Optional[int]=4) -> Self:
+		original = lambda: super()._pow(x, order_threshold=None)
+		if order_threshold and abs(x) <= order_threshold:
+			return original()
+
+		try:
+			h_order = self.h.order()
+		except NotImplementedError | ValueError:
+			return original()
+		if abs(x) < h_order:
+			return original()
+
+		n_quot, h_quot = super()._pow(h_order)
+		assert not h_quot
+
+		q, x = divmod(x, h_order)
+		n_mod, h_mod = original()
+		return type(self)((n_quot ** q * n_mod, h_mod))
+
+	def order(self) -> int:
+		h_order = self.h.order()
+		n_quot, h_quot = super()._pow(h_order)
+		assert not h_quot
+		return n_quot.order() * h_order
+
+
+# WREATH PRODUCT
+# --------------
+
+# Python's type system seems too limited for this, but we can at least use type aliases to make things clearer
+Bottom = Group
+Top = SymmetricGroup
+
+class WreathProduct(SemidirectProduct, final=False):
+	'''
+	wreath product, with a symmetric (sub)group as top
+
+	note: both bottom and top groups need to be finite
+	'''
+
+	BOTTOM: ClassVar[Type[Bottom]]
+	''' bottom part of the wreath product (must be defined by child) '''
+	TOP: ClassVar[Type[Top]]
+	''' top part of the wreath product (must be defined by child) '''
+
+	def __init_subclass__(cls, final=True, **kwargs):
+		if not final:
+			return super().__init_subclass__(final, **kwargs)
+
+		class N(DirectProduct):
+			PARTS = (cls.BOTTOM,) * cls.TOP.SIZE
+			__name__ = cls.__name__ + '.N'
+		cls.N = N
+		cls.PARTS = (N, cls.TOP)
+
+		super().__init_subclass__(final, **kwargs)
+
+	@classmethod
+	@abstractmethod
+	def semidirect_homomorphism(cls, h: H, n: N) -> N:
+		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
 
 
 # APPLICATION-SPECIFIC
