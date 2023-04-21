@@ -11,6 +11,7 @@ import math
 import bisect
 import collections
 import copy
+import itertools
 
 T = TypeVar('T')
 
@@ -73,6 +74,18 @@ class GroupMeta(ABCMeta):
 			raise IndexError(f'element index {index} out of range')
 		return cls._fromindex(index)
 
+	def __iter__(self: Type[T]) -> Iterator[T]:
+		cls = cast(Type['Group'], self)
+		try:
+			return cls._enumerate()
+		except NotImplementedError:
+			pass
+		try:
+			indices = range(cls._order())
+		except ValueError:
+			indices = itertools.count()
+		return map(cls._fromindex, indices)
+
 class Group(metaclass=GroupMeta):
 	'''
 	Base class for finitely generated (finite or infinite) groups.
@@ -84,15 +97,6 @@ class Group(metaclass=GroupMeta):
 		super().__init_subclass__(**kwargs)
 		if not final:
 			return
-
-		try:
-			cls._enumerate()
-		except NotImplementedError:
-			pass
-		else:
-			def __iter__() -> Iterator[T]:
-				return cast(Type['Group'], cls)._enumerate()
-			cls.__iter__ = __iter__
 
 	# first, a class should probably define constructors and __repr__ / value_repr (and maybe __str__)
 
