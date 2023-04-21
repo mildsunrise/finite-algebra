@@ -4,8 +4,9 @@ This code is NOT safe for cryptography; operation time may depend on the values.
 Flexibility first, readability second, performance third (but we generally care about O(n) complexity).
 '''
 
+from typing import Self
 from abc import ABC, ABCMeta, abstractmethod
-from typing import Optional, ClassVar, Self, Iterator, Iterable, Any, Type, TypeVar, Union, cast
+from typing import Optional, ClassVar, Iterator, Iterable, Any, Type, TypeVar, Union, cast
 import math
 import bisect
 import collections
@@ -252,10 +253,10 @@ class Group(metaclass=GroupMeta):
 		if abs(x) > 4:
 			try:
 				order = self.order()
-			except NotImplementedError:
+			except NotImplementedError | ValueError:
 				pass
 			else:
-				if order != None and abs(x) >= order:
+				if abs(x) >= order:
 					x = x % order
 		# for negative exponents, invert the base
 		if x < 0:
