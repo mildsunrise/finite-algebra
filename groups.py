@@ -944,6 +944,18 @@ class WreathProduct(SemidirectProduct, final=False):
 	TOP: ClassVar[Type[Top]]
 	''' top part of the wreath product (must be defined by child) '''
 
+	INVERTED: ClassVar[bool] = True
+	'''
+	whether to invert the automorphism (phi) derived from the permutation.
+	this is set to True by default, meaning the bottom elements refer to
+	the PRE permutation arrangement, i.e. bottoms are applied first and
+	then permuted. setting it to False causes bottom elements to be applied
+	after the permutation, i.e. refer to the POST permutation arrangement.
+
+	this is set to True by default because it is usually easier to reason
+	about elements before the permutation occurs, at least in my experience.
+	'''
+
 	def __init_subclass__(cls, final=True, **kwargs):
 		if not final:
 			return super().__init_subclass__(final, **kwargs)
@@ -958,6 +970,7 @@ class WreathProduct(SemidirectProduct, final=False):
 
 	@classmethod
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
+		h = h.inv if cls.INVERTED else h
 		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
 
 
