@@ -371,16 +371,6 @@ class Group(metaclass=GroupMeta):
 			return type(self)._mul(other, self)
 		return NotImplemented
 
-	def __truediv__(self, other: Self) -> Self:
-		if isinstance(other, type(self)):
-			return self._mul(other.inv)
-		return NotImplemented
-
-	def __rtruediv__(self, other: Self) -> Self:
-		if isinstance(other, type(self)):
-			return type(self)._mul(other, self.inv)
-		return NotImplemented
-
 	def __pow__(self, other: int) -> Self:
 		if not isinstance(other, int):
 			return NotImplemented
