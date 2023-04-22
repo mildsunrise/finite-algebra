@@ -132,7 +132,7 @@ class Group(metaclass=GroupMeta):
 	@classmethod
 	def short_value(cls, x: Any) -> Self:
 		'''
-		coerces short value `x` into a group element of type `t`
+		coerces short value `x` into a group element of type `t`.
 
 		this system is used to allow shorter syntax in cases where the
 		expected group type is known by context, such as in group products.
@@ -143,6 +143,9 @@ class Group(metaclass=GroupMeta):
 		 - if the value is the special ID export, then the identity of that
 		   group is returned.
 		 - otherwise, an element is constructed feeding `x` to the constructor.
+
+		be sure to check out the implementation of your particular Group which
+		may be overriden to allow for additional syntax.
 		'''
 		if isinstance(x, cls):
 			return x
@@ -505,6 +508,30 @@ class SymmetricGroup(Group, final=False):
 
 	def value_repr(self):
 		return '(' + ','.join(map(str, self.value)) + ')'
+
+	# parsing / formatting
+
+	@classmethod
+	def short_value(cls, x: Any) -> Self:
+		'''
+		in addition to the forms listed in `Group.short_value()`, this group
+		accepts an additional syntax: if the value is a list, then its items
+		are passed to `from_cycles()` to construct the element.
+		'''
+		if isinstance(x, list):
+			return cls.from_cycles(*x)
+		return super().short_value(x)
+
+	def value_repr(self):
+		repr_cycle = lambda c: '[' + ','.join(map(str, c)) + ']'
+		return ', '.join(map(repr_cycle, self.cycles(fixpoints=False)))
+
+	def short_repr(self) -> str:
+		return ('[' + self.value_repr() + ']') if self else 'ID'
+
+	def __repr__(self):
+		name = type(self).__name__
+		return name + (f'.from_cycles({self.value_repr()})' if self else '.ID')
 
 	# core group operations
 
@@ -994,6 +1021,33 @@ class WreathProduct(SemidirectProduct, final=False):
 		h = h.inv if cls.INVERTED else h
 		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
 
+	# parsing / formatting
+
+	@classmethod
+	def short_value(cls, x: Any) -> Self:
+		'''
+		in addition to the forms listed in `Group.short_value()`, this group
+		accepts an additional syntax: if the value is a list, then its items
+		are passed to `from_cycles()` to construct the element.
+		'''
+		if isinstance(x, list):
+			return cls.from_cycles(*x)
+		return super().short_value(x)
+
+	def value_repr(self):
+		def repr_cycle(c: tuple[list[int], list[Bottom]]):
+			a = ','.join(map(str, c[0]))
+			b = ','.join(x.short_repr() for x in c[1])
+			return f'([{a}], [{b}])'
+		return ', '.join(map(repr_cycle, self.cycles(fixpoints=False)))
+
+	def short_repr(self) -> str:
+		return ('[ ' + self.value_repr() + ' ]') if self else 'ID'
+
+	def __repr__(self):
+		name = type(self).__name__
+		return name + (f'.from_cycles( {self.value_repr()} )' if self else '.ID')
+
 	# cycle composition / decomposition
 
 	def cycles_iter(self) -> Iterator[ tuple[list[int], list[Bottom]] ]:
@@ -1025,7 +1079,15 @@ class WreathProduct(SemidirectProduct, final=False):
 
 	@classmethod
 	def from_cycles(cls, *cycles: tuple[list[int], list[Bottom]], **kwargs) -> Self:
-		''' constructs an element from a series of (cycle, bottom_list) pairs; see cycles() '''
+		'''
+		constructs an element from a series of (cycle, bottom_list) pairs;
+		see cycles() for more info.
+
+		keyword arguments are passed to `SymmetricGroup.from_cycles()` when creating
+		the top element.
+
+		short syntax is accepted for the bottom elements, see `Group.short_value()`.
+		'''
 		# first of all, create top element (this validates the input)
 		top = cls.TOP.from_cycles(*(cycle[0] for cycle in cycles), **kwargs)
 		# create bottom element
