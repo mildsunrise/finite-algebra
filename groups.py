@@ -1,9 +1,3 @@
-'''
-This code is NOT safe for cryptography; operation time may depend on the values.
-
-Flexibility first, readability second, performance third (but we generally care about O(n) complexity).
-'''
-
 from typing import Self
 from abc import ABC, ABCMeta, abstractmethod
 from typing import Optional, ClassVar, Iterator, Iterable, Any, Type, TypeVar, Union, cast
@@ -1145,34 +1139,6 @@ class WreathProduct(SemidirectProduct, final=False):
 
 # AUTOMAGICAL GROUP CREATION
 # --------------------------
-
-'''
-This module defines a `__getattr__` that will recognize accesses to
-certain name patterns and auto-create the group in the module. This
-allows writing:
-
-~~~ python
-from groups import S12
-~~~
-
-instead of:
-
-~~~ python
-from groups import SymmetricGroup
-
-class S12(SymmetricGroup):
-	SIZE = 12
-~~~
-
-With the added benefit that the created S12 lives in this module and
-the same class will be used by everyone.
-
-Right now the only supported pattern is PREFIX + NATURAL, with the
-following prefixes:
-
- - `S<n>`: SymmetricGroup
- - `Z<n>`: CyclicGroup
-'''
 
 PREFIXES = {
 	'S': SymmetricGroup,
