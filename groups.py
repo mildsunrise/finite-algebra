@@ -757,15 +757,38 @@ class DirectProduct(Group, final=False):
 		''' underlying value '''
 		return self._value
 
-	def __init__(self, value: tuple):
-		assert isinstance(value, tuple)
+	def __init__(self, *value):
+		'''
+		construct an element of the group, using the elements provided for each of the parts.
+
+		short syntax is accepted for the arguments, see `Group.short_value()`.
+		the amount of arguments provided must match `len(PARTS)`.
+		'''
 		self._value = tuple( t.short_value(x) for t, x in zip(type(self).PARTS, value, strict=True) )
 
 	def _cmpkey(self):
 		return self.value
 
+	# parsing / formatting
+
+	@classmethod
+	def short_value(cls, x: Any) -> Self:
+		'''
+		short syntax for this group works as usual, except that the tuple is spread
+		into the constructor's arguments rather than passed as a single argument.
+		'''
+		if isinstance(x, cls):
+			return x
+		if x is ID:
+			return cls.ID
+		assert isinstance(x, tuple), f'short syntax expects a tuple of arguments'
+		return cls(*x)
+
 	def value_repr(self):
-		return '(' + ', '.join(x.short_repr() for x in self.value) + ')'
+		return ', '.join(x.short_repr() for x in self.value)
+
+	def short_repr(self) -> str:
+		return '(' + self.value_repr() + ')'
 
 	# pass sequence protocol to underlying tuple
 
@@ -780,14 +803,14 @@ class DirectProduct(Group, final=False):
 
 	@classmethod
 	def _id(cls):
-		return cls(tuple( g.ID for g in cls.PARTS ))
+		return cls(*( g.ID for g in cls.PARTS ))
 
 	def _mul(self, other: Self) -> Self:
-		return type(self)(tuple( a * b for a, b in zip(self, other) ))
+		return type(self)(*( a * b for a, b in zip(self, other) ))
 
 	@property
 	def inv(self) -> Self:
-		return type(self)(tuple( a.inv for a in self ))
+		return type(self)(*( a.inv for a in self ))
 
 	# bijection
 
@@ -807,13 +830,13 @@ class DirectProduct(Group, final=False):
 		for t in reversed(cls.PARTS):
 			index, x = divmod(index, t.ORDER)
 			result.append(t[x])
-		return cls(tuple(reversed(result)))
+		return cls(*reversed(result))
 
 	@classmethod
 	def _enumerate(cls) -> Iterator[Self]:
 		def generator(parts = cls.PARTS, prefix = ()):
 			if not parts:
-				return (yield cls(prefix))
+				return (yield cls(*prefix))
 			g, *parts = parts
 			for x in g:
 				yield from generator(parts, prefix + (x,))
@@ -822,7 +845,7 @@ class DirectProduct(Group, final=False):
 	# other operations
 
 	def _pow(self, x: int) -> Self:
-		return type(self)(tuple( a ** x for a in self ))
+		return type(self)(*( a ** x for a in self ))
 
 	def order(self) -> int:
 		return math.lcm(*( a.order() for a in self ))
@@ -877,15 +900,37 @@ class SemidirectProduct(Group, final=False):
 		''' underlying value '''
 		return self._value
 
-	def __init__(self, value: tuple[N, H]):
-		assert isinstance(value, tuple)
-		self._value = tuple( t.short_value(x) for t, x in zip(type(self).PARTS, value, strict=True) )
+	def __init__(self, n: N = ID, h: H = ID):
+		'''
+		construct an element of the group, using the elements provided N and H.
+
+		short syntax is accepted for the arguments, see `Group.short_value()`.
+		'''
+		self._value = tuple( t.short_value(x) for t, x in zip(type(self).PARTS, (n, h), strict=True) )
 
 	def _cmpkey(self):
 		return self.value
 
+	# parsing / formatting (this part is very much copied from DirectProduct)
+
+	@classmethod
+	def short_value(cls, x: Any) -> Self:
+		'''
+		short syntax for this group works as usual, except that the pair is spread
+		into the constructor's arguments rather than passed as a single argument.
+		'''
+		if isinstance(x, cls):
+			return x
+		if x is ID:
+			return cls.ID
+		assert isinstance(x, tuple) and len(x) == 2, f'short syntax expects a tuple of 2 arguments'
+		return cls(*x)
+
 	def value_repr(self):
-		return '(' + ', '.join(x.short_repr() for x in self.value) + ')'
+		return ', '.join(x.short_repr() for x in self.value)
+
+	def short_repr(self) -> str:
+		return '(' + self.value_repr() + ')'
 
 	# pass sequence protocol to underlying tuple (this part is very much copied from DirectProduct)
 
@@ -900,17 +945,17 @@ class SemidirectProduct(Group, final=False):
 
 	@classmethod
 	def _id(cls):
-		return cls(tuple( g.ID for g in cls.PARTS ))
+		return cls(*( g.ID for g in cls.PARTS ))
 
 	def _mul(self, other: Self) -> Self:
 		phi = type(self).semidirect_homomorphism
-		return type(self)(( self.n * phi(self.h, other.n), self.h * other.h ))
+		return type(self)( self.n * phi(self.h, other.n), self.h * other.h )
 
 	@property
 	def inv(self) -> Self:
 		phi = type(self).semidirect_homomorphism
 		hinv = self.h.inv
-		return type(self)(( phi(hinv, self.n.inv), hinv ))
+		return type(self)( phi(hinv, self.n.inv), hinv )
 
 	# bijection (this part is very much copied from DirectProduct)
 
@@ -930,13 +975,13 @@ class SemidirectProduct(Group, final=False):
 		for t in reversed(cls.PARTS):
 			index, x = divmod(index, t.ORDER)
 			result.append(t[x])
-		return cls(tuple(reversed(result)))
+		return cls(*reversed(result))
 
 	@classmethod
 	def _enumerate(cls) -> Iterator[Self]:
 		def generator(parts = cls.PARTS, prefix = ()):
 			if not parts:
-				return (yield cls(prefix))
+				return (yield cls(*prefix))
 			g, *parts = parts
 			for x in g:
 				yield from generator(parts, prefix + (x,))
@@ -961,7 +1006,7 @@ class SemidirectProduct(Group, final=False):
 
 		q, x = divmod(x, h_order)
 		n_mod, h_mod = original()
-		return type(self)((n_quot ** q * n_mod, h_mod))
+		return type(self)(n_quot ** q * n_mod, h_mod)
 
 	def order(self) -> int:
 		h_order = self.h.order()
@@ -1019,7 +1064,7 @@ class WreathProduct(SemidirectProduct, final=False):
 	@classmethod
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
 		h = h.inv if cls.INVERTED else h
-		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
+		return cls.N(*( n[h(i)] for i in range(len(n)) ))
 
 	# parsing / formatting
 
@@ -1095,7 +1140,7 @@ class WreathProduct(SemidirectProduct, final=False):
 		for cycle in cycles:
 			for k, v in zip(*cycle, strict=True):
 				bottoms[k] = v
-		return cls((tuple(bottoms), top))
+		return cls(tuple(bottoms), top)
 
 	# other operations
 
