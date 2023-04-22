@@ -12,6 +12,8 @@ import bisect
 import collections
 import copy
 import itertools
+import functools
+import operator
 import re
 
 T = TypeVar('T')
@@ -566,7 +568,7 @@ class SymmetricGroup(Group, final=False):
 				if cursor == start: break
 			yield cycle
 
-	def cycles(self, sort=True, fixpoints=True) -> tuple[list[int]]:
+	def cycles(self, sort=True, fixpoints=True) -> list[list[int]]:
 		'''
 		expresses this permutation as a (normalized) product of disjoint cycles.
 
@@ -583,7 +585,7 @@ class SymmetricGroup(Group, final=False):
 			cycles = filter(lambda x: len(x) != 1, cycles)
 		if sort:
 			cycles = sorted(cycles, key=len, reverse=True)
-		return tuple(cycles)
+		return list(cycles)
 
 	# cycle type & derived properties
 
@@ -947,6 +949,7 @@ class WreathProduct(SemidirectProduct, final=False):
 	INVERTED: ClassVar[bool] = True
 	'''
 	whether to invert the automorphism (phi) derived from the permutation.
+
 	this is set to True by default, meaning the bottom elements refer to
 	the PRE permutation arrangement, i.e. bottoms are applied first and
 	then permuted. setting it to False causes bottom elements to be applied
@@ -955,6 +958,8 @@ class WreathProduct(SemidirectProduct, final=False):
 	this is set to True by default because it is usually easier to reason
 	about elements before the permutation occurs, at least in my experience.
 	'''
+
+	# core class
 
 	def __init_subclass__(cls, final=True, **kwargs):
 		if not final:
@@ -972,6 +977,57 @@ class WreathProduct(SemidirectProduct, final=False):
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
 		h = h.inv if cls.INVERTED else h
 		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
+
+	# cycle composition / decomposition
+
+	def cycles_iter(self) -> Iterator[ tuple[list[int], list[Bottom]] ]:
+		''' like cycles(sort=False), but yields an iterator over the discovered cycles '''
+		return ( (c, [self.n[i] for i in c]) for c in self.h.cycles_iter() )
+
+	# signature and code for this method have been copied from SymmetricGroup
+	# and should be kept in sync with it
+	def cycles(self, sort=True, fixpoints=True) -> list[ tuple[list[int], list[Bottom]] ]:
+		'''
+		this decomposes the top permutation into cycles (see `SymmetricGroup.cycles()`)
+		but also annotates each cycle with the series of bottoms for each of their
+		elements, in order.
+
+		for example, where `self.h.cycles()` would return a `[1,3,2]` element,
+		this would return `([1,3,2], [self.n[1],self.n[3],self.n[2]])`.
+
+		everything else works the same as `SymmetricGroup.cycles()`, with one exception:
+		`fixpoints=False` doesn't filter out *all* fixpoints, only those who have their
+		corresponding bottom set to identity.
+		'''
+		cycles = self.cycles_iter()
+		if not fixpoints:
+			ID = type(self).BOTTOM.ID
+			cycles = filter(lambda c: c[1] != [ID], cycles)
+		if sort:
+			cycles = sorted(cycles, key=lambda c: len(c[0]), reverse=True)
+		return list(cycles)
+
+	@classmethod
+	def from_cycles(cls, *cycles: tuple[list[int], list[Bottom]], **kwargs) -> Self:
+		''' constructs an element from a series of (cycle, bottom_list) pairs; see cycles() '''
+		# first of all, create top element (this validates the input)
+		top = cls.TOP.from_cycles(*(cycle[0] for cycle in cycles), **kwargs)
+		# create bottom element
+		bottoms = [ID] * cls.TOP.SIZE
+		for cycle in cycles:
+			for k, v in zip(*cycle, strict=True):
+				bottoms[k] = v
+		return cls((tuple(bottoms), top))
+
+	# other operations
+
+	def order(self) -> int:
+		INVERTED = type(self).INVERTED
+		residue = lambda b: functools.reduce(operator.mul, b[::-1] if INVERTED else b)  # FIXME: verify!!!
+		cycle_order = lambda c: len(c[0]) * residue(c[1]).order()
+		return math.lcm(*map(cycle_order, self.cycles_iter()))
+
+	# FIXME: override _pow as well
 
 
 # AUTOMAGICAL GROUP CREATION
