@@ -433,6 +433,7 @@ class CyclicGroup(Group, final=False):
 	def _mul(self, other: Self) -> Self:
 		return type(self)(self.value + other.value)
 
+	@property
 	def inv(self):
 		return type(self)(-self.value)
 
