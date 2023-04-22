@@ -75,15 +75,31 @@ class GroupMeta(ABCMeta):
 		cls = cast(Type['Group'], self)
 		return cls._id()
 
+	@property
+	def ORDER(cls) -> int:
+		return cls._order()
+
+	def __bool__(cls) -> bool:
+		# the default implementation would call len(cls), which raises
+		# OverflowError for lengths that do not fit in an index. use ORDER instead.
+		# FIXME: remember to document this quirk and recommend use of ORDER if possible.
+		return bool(cls.ORDER)
+
 	def __len__(self) -> int:
 		cls = cast(Type['Group'], self)
 		return cls._order() # FIXME: maybe translate into a nonexistent method?
 
 	def __getitem__(self: Type[T], index: int) -> T:
 		cls = cast(Type['Group'], self)
+		order = None
+		try:
+			order = cls.ORDER
+		except ValueError:
+			pass
+
 		if not isinstance(index, int):
 			raise TypeError(f'element indices must be integers, not {type(index)}')
-		if not (index >= 0 and ((order := cls._order()) == None or index < order)):
+		if not (index >= 0 and (order == None or index < order)):
 			raise IndexError(f'element index {index} out of range')
 		return cls._fromindex(index)
 
@@ -94,7 +110,7 @@ class GroupMeta(ABCMeta):
 		except NotImplementedError:
 			pass
 		try:
-			indices = range(cls._order())
+			indices = range(cls.ORDER)
 		except ValueError:
 			indices = itertools.count()
 		return map(cls._fromindex, indices)
@@ -217,7 +233,7 @@ class Group(metaclass=GroupMeta):
 		''' returns the order of the group (amount of elements it has)
 		or raise ValueError if the group is infinite.
 
-		internal method; users should use `len(Class)` instead '''
+		internal method; users should use `Class.ORDER` instead '''
 
 	@classmethod
 	@abstractmethod
@@ -755,14 +771,14 @@ class DirectProduct(Group, final=False):
 	def _index(self) -> int:
 		index = 0
 		for t, x in zip(type(self).PARTS, self.value):
-			index = index * len(t) + int(x)
+			index = index * t.ORDER + int(x)
 		return index
 
 	@classmethod
 	def _fromindex(cls, index: int):
 		result = []
 		for t in reversed(cls.PARTS):
-			index, x = divmod(index, len(t))
+			index, x = divmod(index, t.ORDER)
 			result.append(t[x])
 		return cls(tuple(reversed(result)))
 
@@ -878,14 +894,14 @@ class SemidirectProduct(Group, final=False):
 	def _index(self) -> int:
 		index = 0
 		for t, x in zip(type(self).PARTS, self.value):
-			index = index * len(t) + int(x)
+			index = index * t.ORDER + int(x)
 		return index
 
 	@classmethod
 	def _fromindex(cls, index: int):
 		result = []
 		for t in reversed(cls.PARTS):
-			index, x = divmod(index, len(t))
+			index, x = divmod(index, t.ORDER)
 			result.append(t[x])
 		return cls(tuple(reversed(result)))
 
