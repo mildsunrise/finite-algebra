@@ -381,6 +381,10 @@ class Group(metaclass=GroupMeta):
 		''' (left) conjugate this element by `other`: equivalent to `other.inv * self * other` '''
 		return type(self).conj(other, self)
 
+	def comm(self, other: Self) -> Self:
+		''' obtains a commutator element: equivalent to `self.inv * other.inv * self * other` '''
+		return self.inv * other.inv * self * other
+
 	# bijection (class-level syntax is already provided by the metaclass)
 
 	def __int__(self) -> int:
@@ -409,7 +413,7 @@ class CyclicGroup(Group, final=False):
 		return self._value
 
 	def __init__(self, value: int):
-		assert isinstance(value, int)
+		assert isinstance(value, int), f'object {repr(value)} is not an int'
 		self._value = value % self.SIZE
 
 	def value_repr(self) -> str:
@@ -1227,7 +1231,7 @@ def __init(cls = CubeRot):
 	for axis in 'XYZ':
 		laxis, AXIS = axis.lower(), getattr(cls, axis)
 		set_elem(axis + '2', laxis + '²', AXIS ** 2)
-		set_elem(axis + 'p', laxis + "'", AXIS ** -1)
+		set_elem(axis + 'p', laxis + '⁻', AXIS ** -1)
 
 	for AXIS in (cls.X, cls.Y):
 		for sense in (+1, -1):
