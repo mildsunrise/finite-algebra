@@ -899,7 +899,7 @@ class SemidirectProduct(Group, final=False):
 	# other operations
 
 	def _pow(self, x: int, order_threshold: Optional[int]=4) -> Self:
-		original = lambda: super()._pow(x, order_threshold=None)
+		original = (lambda p: lambda: p(x, order_threshold=None))(super()._pow)
 		if order_threshold and abs(x) <= order_threshold:
 			return original()
 
@@ -919,7 +919,7 @@ class SemidirectProduct(Group, final=False):
 
 	def order(self) -> int:
 		h_order = self.h.order()
-		n_quot, h_quot = super()._pow(h_order)
+		n_quot, h_quot = super()._pow(h_order, order_threshold=None)
 		assert not h_quot
 		return n_quot.order() * h_order
 
@@ -956,7 +956,6 @@ class WreathProduct(SemidirectProduct, final=False):
 		super().__init_subclass__(final, **kwargs)
 
 	@classmethod
-	@abstractmethod
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
 		return cls.N(tuple( n[h(i)] for i in range(len(n)) ))
 
