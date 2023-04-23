@@ -1,6 +1,6 @@
 # finite-algebra
 
-This is (a prototype of) a Python library for finite ~~algebra~~ group theory, which encapsulates elements of a structure as instances of an immutable class, and allow easy and expressive operation with them.
+This is (a prototype of) a Python library for finite ~~algebra~~ group theory, which encapsulates elements of a structure as instances of an immutable class, and allows easy and expressive operation with them.
 
 It's designed to be both practical and expressive to use as a calculator (for playing and experiments), and also high-quality and ergonomical enough for use in production code. I've attempted to keep code quality at a minimum, so that it can serve for learning purposes or as base for production code.
 
@@ -40,15 +40,15 @@ The [Rubik's cube group](https://en.wikipedia.org/wiki/Rubik%27s_Cube_group) can
 from groups import WreathProduct, DirectProduct, S8, S12, Z2, Z3
 
 class Corners(WreathProduct):
-	BOTTOM = Z3
-	TOP = S8
+    BOTTOM = Z3
+    TOP = S8
 
 class Edges(WreathProduct):
-	BOTTOM = Z2
-	TOP = S12
+    BOTTOM = Z2
+    TOP = S12
 
 class Rubik(DirectProduct):
-	PARTS = Corners, Edges
+    PARTS = Corners, Edges
 ~~~
 
 This is actually not exactly the Rubik's cube, but a supergroup 12 times as large, because it includes states that are reachable by reassembling the cube but not solvable through legal moves. The six legal moves (90-degree turns to each face of the cube), can be derived by first defining rotations to the whole cube:
@@ -58,12 +58,12 @@ c0, c1, cA = [0,0,0,0], [1,1,1,1], [1,-1,1,-1]
 
 # 90-degree rotation of whole cube (except centers) around axis X and Y
 X = Rubik(
-	[ ([0,1,4,5], c0), ([3,2,7,6], c0) ],
-	[ ([0,2,4,6], c1), ([1,9,5,8], c0), ([3,10,7,11], c0) ],
+    [ ([0,1,4,5], c0), ([3,2,7,6], c0) ],
+    [ ([0,2,4,6], c1), ([1,9,5,8], c0), ([3,10,7,11], c0) ],
 )
 Y = Rubik(
-	[ ([2,1,4,7], cA[::-1]), ([3,0,5,6], cA) ],
-	[ ([2,9,4,10], c1), ([0,8,6,11], c1), ([3,1,5,7], c1) ],
+    [ ([2,1,4,7], cA[::-1]), ([3,0,5,6], cA) ],
+    [ ([2,9,4,10], c1), ([0,8,6,11], c1), ([3,1,5,7], c1) ],
 )
 ~~~
 
@@ -109,9 +109,9 @@ Rubik([ ([1,2], [1,1]), ([4,7], [0,1]) ], [ ([2,4,9], [0,1,1]) ])
 
 we can learn that it:
 
- - swaps corners 1 and 2
+ - swaps corners 1 and 2 + rotates at least one of them
  - swaps corners 4 and 7 + rotates at least one of them
- - cycles edges 2, 4, 9 + rotates at least one of them
+ - cycles edges 2, 4, 9
 
 The library doesn't provide fancy algorithms to determine generator sets, discover subgroups or solve cubes, though. It is meant to serve more like a base to implement this kind of stuff.
 
@@ -490,4 +490,76 @@ This system allows us to omit the name of the class (and a lengthy method call i
 
 ### Implementing custom groups
 
-TODO
+Sometimes it may be necessary to implement a group from scratch. To start we need to subclass `Group` and define the constructor (+ getters), as usual:
+
+~~~ python
+from groups import Group
+
+class MyFancyGroup(Group):
+    def __init__(self, value):
+        # TODO: validate `value`
+        self._value = value
+
+    @property
+    def value(self):
+        return self._value
+~~~
+
+Then define the three **core methods** of the group: the `_id()` classmethod to obtain the identity element, `_mul()` to operate two elements, and the `inv` property to invert an element:
+
+~~~ python
+    @classmethod
+    def _id(cls) -> 'MyFancyGroup':
+        return cls(...) # TODO
+
+    def _mul(self, other: 'MyFancyGroup') -> 'MyFancyGroup':
+        # (`other` has already been validated to be an instance of this class)
+        return type(self)(...) # TODO
+
+    @property
+    def inv(self) -> 'MyFancyGroup':
+        return type(self)(...) # TODO
+~~~
+
+It is also necessary to provide the **bijection with the naturals** by implementing `_index()` and `_fromindex()` (map elements to naturals and viceversa) and `_order()` (returns the amount of elements of the group):
+
+~~~ python
+    def _index(self) -> int:
+        return ... # TODO: must return an integer 0 <= n < ORDER
+
+    @classmethod
+    def _fromindex(cls, index: int) -> 'MyFancyGroup':
+        # (`index` has already been validated to be an integer 0 <= n < ORDER)
+        return ... # TODO
+
+    @classmethod
+    def _order(cls) -> int:
+        return ... # TODO: amount of group elements
+~~~
+
+This is all that's needed for a compliant group class; however some methods are recommended to be overriden for ergonomics and performance. By default, elements of the groups will be **formatted** using their index (`MyFancyGroup[2349]`) but it's strongly recommended to provide informative formatting. Sometimes using a call to the constructor (`MyFancyGroup(<value>)`) is enough: to do this, override `value_repr()` to return a representation of `<value>` to fill in, e.g.:
+
+~~~ python
+    def value_repr(self) -> str:
+        return repr(self.value)
+~~~
+
+This causes the default implementation of `__repr__` to format a call to the constructor. If more sophisticated formatting is needed, `__repr__` can be overriden directly. To customize the way **short syntax** works for this group, you may want to override `short_repr` and `short_value`. See the `Group` class source code for more details.
+
+You should also implement `order()` if there's an efficient way to calculate the order of elements of the group:
+
+~~~ python
+    def order(self) -> int:
+        return ... # smallest positive `n` such that `self ** n == ID`
+~~~
+
+All missing optional methods are for performance. The group uses `_index()` for **comparison and hashing**, but this is often inefficient because a compact index isn't necessary for those purposes. In this case you can override `_cmpkey()` to delegate comparison and hashing ops to something other than the index, e.g.:
+
+~~~ python
+    def _cmpkey(self):
+        return self.value
+~~~
+
+If you do this, **make sure the returned value compares consistently with the bijection you defined above**. If you want to use something other than `_cmpkey()` for hashing (e.g. to skip fields for the hash) you may also override `__hash__()`.
+
+Another useful optimization may be to override `_pow()` if the group allows exponentiation in a more efficient way than the default exponentiation by squaring.
