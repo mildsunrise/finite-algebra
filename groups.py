@@ -1134,7 +1134,7 @@ class WreathProduct(SemidirectProduct, final=False):
 
 	def order(self) -> int:
 		INVERTED = type(self).INVERTED
-		residue = lambda b: functools.reduce(operator.mul, b[::-1] if INVERTED else b)  # FIXME: verify!!!
+		residue = lambda b: functools.reduce(operator.mul, b[::-1] if INVERTED else b)
 		cycle_order = lambda c: len(c[0]) * residue(c[1]).order()
 		return math.lcm(*map(cycle_order, self.cycles_iter()))
 
@@ -1187,6 +1187,11 @@ class CubeRot(SymmetricGroup):
 	# formatting
 	LABELS: ClassVar[dict['CubeRot', str]] = {}
 	LABELS_REV: ClassVar[dict[str, 'CubeRot']]
+
+	def __repr__(self):
+		return Group.short_repr(self)
+	def short_repr(self):
+		return Group.short_repr(self)
 
 	def value_repr(self):
 		if not self:

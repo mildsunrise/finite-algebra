@@ -74,7 +74,7 @@ Y = Rubik(
 F = Rubik([ ([0,1,2,3], c0) ], [ ([0,1,2,3], c0) ])
 
 # conjugating F by cube rotations yields turns to the other faces:
-R, L, D, U, B = map(F.conj_by, (X, X.inv, Y, Y.inv, X**2))
+L, R, D, U, B = map(F.conj_by, (X, X.inv, Y, Y.inv, X**2))
 ~~~
 
 We can then calculate the order of certain algorithms:
