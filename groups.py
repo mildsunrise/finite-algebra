@@ -860,6 +860,21 @@ class SemidirectProduct(Group, final=False):
 	''' the 2 groups for the product: normal subgroup N and quotient group H (must be defined by child) '''
 	# FIXME: this should be ClassVar, but it's forbidden for type variables...?
 
+	INVERTED: ClassVar[bool] = False
+	'''
+	by default, the group operation applies the automorphism to the right N element:
+
+		(n₁, h₁) · (n₂, h₂) = (n₁ · φ[h₁](n₂), h₁ · h₂)
+
+	this is the most common convention. setting this to True reverses this,
+	causing it to be applied to the left N element instead:
+
+		(n₁, h₁) · (n₂, h₂) = (φ[h₂](n₁) · n₂, h₁ · h₂)
+
+	this is the equivalent of reversing the group operation while also reversing
+	the group operation of both N and H.
+	'''
+
 	@classmethod
 	@abstractmethod
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
@@ -937,7 +952,11 @@ class SemidirectProduct(Group, final=False):
 
 	def _mul(self, other: Self) -> Self:
 		phi = type(self).semidirect_homomorphism
-		return type(self)( self.n * phi(self.h, other.n), self.h * other.h )
+		n = {
+			False: lambda: self.n * phi(self.h, other.n),
+			True:  lambda: phi(other.h, self.n) * other.n,
+		}[type(self).INVERTED]()
+		return type(self)(n, self.h * other.h)
 
 	@property
 	def inv(self) -> Self:
@@ -1022,9 +1041,9 @@ class WreathProduct(SemidirectProduct, final=False):
 	TOP: ClassVar[Type[Top]]
 	''' top part of the wreath product (must be defined by child) '''
 
-	INVERTED: ClassVar[bool] = True
+	INVERTED = True
 	'''
-	whether to invert the automorphism (phi) derived from the permutation.
+	see `SemidirectProduct` for the description of this parameter.
 
 	this is set to True by default, meaning the bottom elements refer to
 	the PRE permutation arrangement, i.e. bottoms are applied first and
@@ -1051,7 +1070,6 @@ class WreathProduct(SemidirectProduct, final=False):
 
 	@classmethod
 	def semidirect_homomorphism(cls, h: H, n: N) -> N:
-		h = h.inv if cls.INVERTED else h
 		return cls.N(*( n[h(i)] for i in range(len(n)) ))
 
 	# parsing / formatting
